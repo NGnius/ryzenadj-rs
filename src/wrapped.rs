@@ -21,6 +21,53 @@ pub const fn version() -> RyzenAdjVersion {
     }
 }
 
+#[derive(Debug)]
+pub enum RyzenAdjErr {
+    Init,
+    Table(i32),
+    NaN,
+    UnknownFamily(i32),
+    FamilyUnsupported,
+    SmuTimeout,
+    SmuUnsupported,
+    SmuRejected,
+    MemoryAccess,
+    Unknown(i32),
+}
+
+impl RyzenAdjErr {
+    fn from_set_code(result: i32) -> Result<(), Self> {
+        match result {
+            0 => Ok(()),
+            ADJ_ERR_FAM_UNSUPPORTED => Err(Self::FamilyUnsupported),
+            ADJ_ERR_SMU_TIMEOUT => Err(Self::SmuTimeout),
+            ADJ_ERR_SMU_UNSUPPORTED => Err(Self::SmuUnsupported),
+            ADJ_ERR_SMU_REJECTED => Err(Self::SmuRejected),
+            ADJ_ERR_MEMORY_ACCESS => Err(Self::MemoryAccess),
+            res => Err(Self::Unknown(res))
+        }
+    }
+}
+
+impl std::fmt::Display for RyzenAdjErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            Self::Init => write!(f, "Init error"),
+            Self::Table(i) => write!(f, "Table init error {}", i),
+            Self::NaN => write!(f, "NaN returned"),
+            Self::UnknownFamily(i) => write!(f, "Unknown CPU family {}", i),
+            Self::FamilyUnsupported => write!(f, "CPU Family unsupported"),
+            Self::SmuTimeout => write!(f, "SMU timeout"),
+            Self::SmuUnsupported => write!(f, "SMU unsupported"),
+            Self::SmuRejected => write!(f, "SMU rejected"),
+            Self::MemoryAccess => write!(f, "Memory access error"),
+            Self::Unknown(i) => write!(f, "Unknown error {}", i),
+        }
+    }
+}
+
+impl std::error::Error for RyzenAdjErr {}
+
 pub struct RyzenAccess {
     raw_access: ryzen_access,
 }
@@ -44,23 +91,46 @@ macro_rules! pub_get_raw {
 /// Macro for re-declaring value setters for raw_access in a more Rust-centric format
 macro_rules! pub_set_raw {
     ($raw_fn:ident, $pretty_fn:ident) => {
-        pub fn $pretty_fn(&self) -> i32 {
-            unsafe {$raw_fn(self.raw_access)}
+        pub fn $pretty_fn(&self) -> Result<(), RyzenAdjErr> {
+            RyzenAdjErr::from_set_code( unsafe {$raw_fn(self.raw_access)} )
         }
     };
     ($raw_fn:ident, $pretty_fn:ident, $value:ident) => {
-        pub fn $pretty_fn(&self, val: $value) -> i32 {
-            unsafe {$raw_fn(self.raw_access, val)}
+        pub fn $pretty_fn(&self, val: $value) -> Result<(), RyzenAdjErr> {
+            RyzenAdjErr::from_set_code( unsafe {$raw_fn(self.raw_access, val)})
         }
     }
 }
 
 impl RyzenAccess {
 
-    pub fn new() -> Self {
-        Self {
-            raw_access: unsafe {init_ryzenadj()},
+    pub fn new() -> Result<Self, RyzenAdjErr> {
+        let access = unsafe { init_ryzenadj() };
+        if access.is_null() {
+            Err(RyzenAdjErr::Init)
+        } else {
+            let table_result = unsafe { init_table(access) };
+            if table_result != 0 {
+                Err(RyzenAdjErr::Table(table_result))
+            } else {
+                Ok(Self {
+                    raw_access: access,
+                })
+            }
         }
+    }
+
+    pub_get_raw!{get_bios_if_ver, get_bios_if_ver, i32}
+
+    pub_get_raw!{get_table_ver, get_table_ver, u32}
+    pub_get_raw!{get_table_size, get_table_size, usize}
+
+    pub unsafe fn get_table_values(&self) -> *mut f32 {
+        get_table_values(self.raw_access)
+    }
+
+    pub fn refresh_table(&self) -> i32 {
+        unsafe {refresh_table(self.raw_access)}
     }
 
     pub_get_raw!{get_stapm_limit, get_stapm_limit, f32}
