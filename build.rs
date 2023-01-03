@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 fn main() {
     // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search=ryzenadj/build/");
+    //println!("cargo:rustc-link-search=ryzenadj/build/");
+    println!("cargo:rustc-link-search={}", env::var("OUT_DIR").unwrap());
 
     // Tell cargo to tell rustc to link the system bzip2
     // shared library.
@@ -12,7 +13,7 @@ fn main() {
     // Tell cargo to invalidate the built crate whenever the wrapper changes
     println!("cargo:rerun-if-changed=src/ryzenadj.h");
 
-    // Run `clang` to compile the `hello.c` file into a `hello.o` object file.
+    // Run `cmake` to generate build files for ryzenadj.
     // Unwrap if it is not possible to spawn the process.
     if !std::process::Command::new("cmake")
         .arg("-S").arg("./ryzenadj")
@@ -28,7 +29,7 @@ fn main() {
         panic!("could not compile object file");
     }
 
-    // Run `ar` to generate the `libhello.a` file from the `hello.o` file.
+    // Run `make` to compile ryzenadj into object file.
     // Unwrap if it is not possible to spawn the process.
     if !std::process::Command::new("make")
         .arg("-C").arg(env::var("OUT_DIR").unwrap())
@@ -40,6 +41,21 @@ fn main() {
         // Panic if the command was not successful.
         panic!("could not compile ryzenadj");
     }
+
+    /*// Run `ar` to generate the `libryzenadj.a` file from the `libryzenadj.o` file.
+    // Unwrap if it is not possible to spawn the process.
+    if !std::process::Command::new("ar")
+        .arg("rcs")
+        .arg(&format!("libryzenadj.a"))
+        .arg(&format!("libryzenadj.so"))
+        .output()
+        .expect("could not spawn `ar`")
+        .status
+        .success()
+    {
+        // Panic if the command was not successful.
+        panic!("could not emit library file");
+    }*/
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -61,4 +77,5 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+    //println!("cargo:rustc-flags=-l ryzenadj -L {}/libryzenadj.a", env::var("OUT_DIR").unwrap());
 }

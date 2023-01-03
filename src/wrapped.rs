@@ -68,9 +68,12 @@ impl std::fmt::Display for RyzenAdjErr {
 
 impl std::error::Error for RyzenAdjErr {}
 
+#[derive(Debug)]
 pub struct RyzenAccess {
     raw_access: ryzen_access,
 }
+
+unsafe impl Send for RyzenAccess {}
 
 /// Macro for re-declaring value getters for raw_access in a more Rust-centric format
 macro_rules! pub_get_raw {
